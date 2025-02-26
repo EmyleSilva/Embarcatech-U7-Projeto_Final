@@ -46,7 +46,8 @@ pico_enable_stdio_usb(Embarcatech-U7-ProjetoFinal 1)
 
 # Add the standard library to the build
 target_link_libraries(Embarcatech-U7-ProjetoFinal
-        pico_stdlib)
+        pico_stdlib
+        pico_time)
 
 # Add the standard include files to the build
 target_include_directories(Embarcatech-U7-ProjetoFinal PRIVATE
@@ -58,6 +59,7 @@ target_link_libraries(Embarcatech-U7-ProjetoFinal
         hardware_adc
         hardware_clocks
         hardware_i2c
+        hardware_uart
         )
 
 pico_add_extra_outputs(Embarcatech-U7-ProjetoFinal)

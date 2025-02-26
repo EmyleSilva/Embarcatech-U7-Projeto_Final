@@ -4,31 +4,46 @@
 #include "hardware/clocks.h"
 #include "hardware/adc.h"
 #include "hardware/i2c.h"
+#include "hardware/uart.h"
 #include "inc/ssd1306.h"
 #include "inc/font.h"
 
-/** @brief Pino ligado ao joystick eixo X - Simula o sensor de chuva YL-83 */
+/** @brief Pino ligado ao joystick eixo X - Simula o sensor de chuva YL-83
+ **/
 #define YL_83 26 
 
-/** @brief Pino ligado ao joystick eixo Y - Simula o sensor ultrassônico HC-SR04 */
+/** @brief Pino ligado ao joystick eixo Y - Simula o sensor ultrassônico HC-SR04 
+ **/
 #define HC_SR04 27
 
-/** @brief Botão A - Simula o recebimento de solicitações do usuário */
+/** 
+ * @brief Pino ligado ao Botão A - Simula o recebimento de solicitações do usuário
+ **/
 #define BUTTON_A 5
 
-/** Definições para I2C (conexão do display) */
-#define I2C_PORT i2c1 
-#define I2C_SDA 14 
+/**
+ * @brief Definições para I2C (display)
+ */
+#define I2C_PORT i2c1
+#define I2C_SDA 14  
 #define I2C_SCL 15 
 #define address 0x3C 
 
-/** Definições para UART */
+/**
+ * @brief Definições para uart
+ */
 #define UART_ID uart0
 #define BAUD_RATE 115200
 
-#define REPORT_TIME 10000 // Intervalo de 10s
+/**
+ * @brief Intervalo de tempo entre os envios de relatórios
+ */
+#define REPORT_TIME 10000 
 
-#define DEBOUNCE_TIME_MS 500 //Define o tempo de Debounce em ms
+/**
+ * @brief Tempo (ms) para tratamento de bouncing do botão 
+ */
+#define DEBOUNCE_TIME_MS 500 
 
 //Variáveis Globais
 ssd1306_t ssd;
@@ -43,7 +58,6 @@ float last_river_level;
 float current_rain_intensity;
 int status;
 enum level_status {ATTENTION, ALERT, DANGER, SAFE};
-
 /**
  * @brief Procedimento para configurar e inicializar o Joystick
  */
@@ -87,49 +101,42 @@ void init_button()
 }
 
 /**
- * @brief Reúne informações de relatório e fazem o envio para o usuário
+ * @brief Reúne informações de relatório e faz o envio para o usuário
  */
 void send_report()
 {
     static volatile uint report_id = 1;
     float diff_p = 0.0;
 
-    printf("ID do relatório: %d\n", report_id++);
-    printf("Nível atual do Rio: %.2f\n", current_river_level);
-    (current_rain_intensity > 0) ? printf("Intensidade da chuva: %.2f\n", current_rain_intensity) :  printf("Sem chuva.\n");
-    
+    printf("\nID %d\n", report_id++);
+    printf("Nível: %.2f\n", current_river_level);
+    (current_rain_intensity > 0) ? printf("Chuva: %.2f%%\n", current_rain_intensity) :  printf("Sem chuva.\n");
+
     switch (status)
     {
     case ATTENTION:
-        printf("Status: ATENÇÃO (pouco perigo)");
+        printf("Status: ATENÇÃO\n");
         break;
     case ALERT:
-        printf("Status: ALERTA (risco de enchente)");
+        printf("Status: ALERTA\n");
         break;
     case DANGER:
-        printf("Status: PERIGO (risco de inundação)");
+        printf("Status: PERIGO\n");
         break;
     case SAFE:
-        printf("Status: SEGURO");
+        printf("Status: SEGURO\n");
         break;
     default:
-        printf("Erro na leitura do status");
+        printf("Status: Erro\n");
         break;
     }
-
-    printf("\n");
 
     if (last_river_level)
     {
         float diff = current_river_level - last_river_level;
-        //diff_p = (diff / (diff / 2)) * 100;
         diff_p = (diff / last_river_level) * 100.0;
-        if (diff > 0) printf("Aumento do nível do rio em %.2f%%", diff);
-        else if (diff < 0) printf("Diminuição do nível do rio em %.2f%%", -diff);
-        else printf("Não houve diferença no nível do rio");
+        printf("Dif:%.2f%%", diff);
     }
-
-    printf("\n\n");
 
     last_river_level = current_river_level;
 }
@@ -159,6 +166,9 @@ bool repeating_timer_callback(struct repeating_timer *t)
     return true;
 }
 
+/**
+ * @brief Envia uma notificação para o usuário (Exibição no display)
+ */
 void send_notification(char *notification)
 {
     char level[20];
@@ -172,6 +182,9 @@ void send_notification(char *notification)
     ssd1306_send_data(&ssd); // Atualiza o display
 }
 
+/**
+ * @brief Faz a leitura dos sensores (Joystick eixo X e Y) e calcula o nivel do rio e intensidade da chuva 
+ */
 void verify_river_level()
 {
     adc_select_input(0);
@@ -208,19 +221,18 @@ void set_river_status()
 {
   
     char *message;
-    if (current_river_level >= 9.0) {
+
+    if (current_river_level >= 9.0 || (current_river_level >= 7.0 && current_rain_intensity > 50.0))
+    {
         status = DANGER;
         message = "PERIGO";
-    } else if (current_river_level >= 7.0) {
-        status = (current_rain_intensity > 50.0) ? DANGER : ALERT;
-        message = (status == DANGER) ? "PERIGO" : "ALERTA";
-    } else if (current_river_level > river_level) {
-        status = (current_rain_intensity > 50.0) ? ALERT : ATTENTION;
-        message = (status == ALERT) ? "ALERTA" : "ATENCAO";
-    } else if (current_river_level <= 5.0 && current_rain_intensity > 70) {
+    }else if ((current_river_level >= 7.0 && current_rain_intensity > 50.0) || (current_river_level > river_level && current_rain_intensity > 50.0)){
+        status = ALERT;
+        message = "ALERTA";
+    }else if ((current_river_level > river_level && current_rain_intensity <= 50.0) || (current_river_level <= river_level && current_rain_intensity > 70.0)){
         status = ATTENTION;
         message = "ATENCAO";
-    } else {
+    }else {
         status = SAFE;
         message = "SEGURO";
     }
@@ -235,15 +247,17 @@ int main()
     init_joystick();
     init_button();
     init_i2c_display();
-    uart_init(uart0, BAUD_RATE);
+    uart_init(UART_ID, BAUD_RATE);
 
     /**
      * @brief Função de interrupção para tratamento de ação ao acionar o Botão A 
+     * @see gpio_irq_handler()
      */
     gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
 
     /**
      * @brief Aciona uma função de callback de maneira periódica para enviar relatórios
+     * @see repeating_timer_callback()
      */
     repeating_timer_t timer;
     add_repeating_timer_ms(REPORT_TIME, repeating_timer_callback, NULL, &timer);
